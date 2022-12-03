@@ -1,0 +1,352 @@
+---
+title: "MATH-564 Project"
+subtitle: "House Prices Data Analytics"
+author:
+  - "A20495939 - Jasleen Kaur Bhatia"
+  - "A20504279 - Sajesh Rao Erabelli"
+--- 
+
+
+### Problem Statement
+
+House price varies based on the condition of itself and the environment. From the number of bedrooms to the location of the house, any variable might be the key that affects the house price the most. In this project , we will use ANOVA and MLR to determine the relation of house situations with sold price and predict the house price.
+### Loading Libraries 
+
+```{r}
+library(readr)
+library(stringr)  
+library(dplyr)
+library(caTools)
+library(corrplot)
+library(ggplot2)
+library(grid)
+library(lattice)
+library(gridExtra)
+library(ggpubr)
+library(tidyverse)
+library(broom)
+library(AICcmodavg)
+library(caret)
+library(leaps)
+library(MASS)
+library(car)
+```
+
+### Loading Datasets
+
+```{r}
+house_datasales <- read_csv("/Users/jasleenkaurbhatia/Desktop/Semester3/Applied_Stats/AS Project/kc_house_data.csv")
+head(house_datasales)
+colnames(house_datasales)
+dim(house_datasales)
+str(house_datasales)
+  
+```
+
+So the total number of rows in housedata dataset is : 21597 and number of columns is 21.
+
+
+Understanding the data :
+```{r}
+summary(house_datasales)
+for (column in house_datasales){
+  print( typeof(column)) 
+}
+```
+So we understand that we have 21 features and all but one have their datatype as double.Only one specific feature- date has the data type as "character".
+
+It would be better if we create a dataset without the values of date as that will allow us to undertsand the data better by using correlation and other functions/plots.
+
+
+
+```{r}
+
+house_datasales1 <- house_datasales[,-1:-2] 
+colnames(house_datasales1)
+dim(house_datasales1)
+#View(house_datasales1)
+
+
+```
+
+Loading USZIPCODE data:
+
+```{r}
+zipcode_data <- read_csv("/Users/jasleenkaurbhatia/Desktop/Semester3/Applied_Stats/AS Project/uszips.csv")
+head(zipcode_data)
+colnames(zipcode_data)
+dim(zipcode_data)
+```
+
+So, uszips dataset have 33788 rows ansd 18 columns. 
+
+Understanding the USZIPS data :
+```{r}
+summary(zipcode_data)
+for (column in zipcode_data){
+  print( typeof(column)) 
+}
+```
+
+From the above, we understand that 10 features have their data type as character, 4 features have it as double and the remaining 4 are logical. 
+
+As our main focus is on prediction of sold price, we remove values that do not have much impact on the change in the value of price.
+
+```{r}
+par(mfrow=c(4,5))
+scatterplot(house_datasales1$bedrooms,house_datasales$price)
+scatterplot(house_datasales1$bathrooms,house_datasales$price)
+scatterplot(house_datasales1$floors,house_datasales$price)
+scatterplot(house_datasales1$waterfront,house_datasales$price)
+scatterplot(house_datasales1$condition,house_datasales$price)
+scatterplot(house_datasales1$sqft_living15,house_datasales$price)
+scatterplot(house_datasales1$sqft_lot15,house_datasales$price)
+scatterplot(house_datasales1$view ,house_datasales$price)
+scatterplot(house_datasales1$grade,house_datasales$price)
+scatterplot(house_datasales1$sqft_above,house_datasales$price)
+scatterplot(house_datasales1$sqft_basement,house_datasales$price)
+scatterplot(house_datasales1$yr_built,house_datasales$price)
+scatterplot(house_datasales1$yr_renovated,house_datasales$price)
+scatterplot(house_datasales1$zipcode,house_datasales$price)
+scatterplot(house_datasales1$lat,house_datasales$price)
+scatterplot(house_datasales1$long,house_datasales$price)
+scatterplot(house_datasales1$sqft_living,house_datasales$price)
+scatterplot(house_datasales1$sqft_lot,house_datasales$price)
+
+
+
+```
+Initial look on the above relation between each variable to the dependent variable - price makes us understand that there are some outliers in the data which we have to take care such that the influence of such points in the creation of the model is less. 
+
+
+```{r}
+
+
+plot(house_datasales1[1:5])
+plot(house_datasales1[6:10])
+plot(house_datasales1[11:15])
+plot(house_datasales1[16:18])
+cor(house_datasales1[1:5],house_datasales1$price)
+cor(house_datasales1[6:10],house_datasales1$price)
+cor(house_datasales1[11:19],house_datasales1$price)
+#View(house_datasales1)
+```
+### Data Preprocessing
+### Performing Data Sanity Checks before proceeding with analysis
+
+```{r}
+house_datasales1$zip <- house_datasales1$zipcode
+house_datasales1$zipcode <- NULL
+house_datasales1$basement <- house_datasales$sqft_basement
+house_datasales1$sqft_basement <- NULL
+#View(zipcode_data)
+zipcode_data <- zipcode_data[ -c(2:3,5,7:18) ]
+#View(zipcode_data)
+## Converting categorical values to numeric
+house_datasales1$basement = ifelse(house_datasales1$basement>0,"1","0")
+#View(house_datasales1)
+house_datasales1$renovation = ifelse(house_datasales1$"yr_renovated">0,"1","0")
+house_datasales1$yr_renovated <- NULL
+
+```
+
+Checking missing values and duplicate values in the data:
+
+```{r}
+## missing values check
+print(sum(is.na(house_datasales1)))
+print(sum(is.na(zipcode_data)))
+## duplicate rows check
+zipcode_data %>% distinct(zip, .keep_all= TRUE)
+#View(house_datasales1)
+#View(zipcode_data)
+final_merged_data <- merge(house_datasales1,zipcode_data,by="zip")
+#View(final_merged_data)
+
+```
+
+We go ahead with merging 2 datasets as it will then be easy for us to create the model. 
+
+```{r}
+# Merging 2 datasets
+final_merged_data <- merge(house_datasales1,zipcode_data,by="zip")
+#View(final_merged_data)
+```
+
+```{r}
+# Examine the frequency table of city and state_name
+table(final_merged_data$city)
+table(final_merged_data$state_name)
+final_merged_data$state_name <- NULL
+```
+
+
+### Detecting ol if any
+
+```{r}
+boxplot(final_merged_data$price, ylab = "Price")
+boxplot(final_merged_data$bedrooms, ylab = "Bedrooms")
+```
+
+
+### Exploratory Data Analysis ###
+
+```{r}
+#View(final_merged_data)
+summary(final_merged_data)
+## missing value check
+na_check=data.frame(no_of_na_values=colSums(is.na(final_merged_data)))
+head(na_check,5)
+
+## Sampling the data
+set.seed(123)
+split = sample.split(final_merged_data$zip,SplitRatio = 0.7)
+train =subset(final_merged_data,split == TRUE)
+test =subset(final_merged_data, split == FALSE)
+dim(train)
+#View(train)
+dim(test)
+```
+
+Finding the correlation and plotting the features using heatmap
+```{r}
+
+corr_data=data.frame(train[,1:20])
+corr_data = corr_data[, -c(18:21)]
+
+correlation=cor(corr_data)
+par(mfrow=c(1, 1))
+corrplot(correlation,method="color")
+
+```
+
+###  Scatter plots for determining the positive-correlated variables
+
+```{r}
+plot1=ggplot(data = train, aes(x = bedrooms, y = price)) +
+  geom_jitter() +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Price vs Bedrooms", x="Bedrooms",y="Price")
+plot2=ggplot(data = train, aes(x = bathrooms, y = price)) +
+  geom_jitter() +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Price vs Bathrooms", x="Bathrooms",y="Price")
+plot3=ggplot(data = train, aes(x = floors, y = price)) +
+  geom_jitter() +  geom_smooth(method = "lm", se = FALSE)+labs(title="Scatter plot of Price vs Floors", x="Floors",y="Price")
+
+```
+
+### To get clear view of relationships, we plot the boxplots
+
+```{r}
+par(mfrow=c(2, 2))
+boxplot(price~waterfront,data=train,main="Price vs Waterfront", xlab="waterfront",ylab="price",col="green",border="blue")
+boxplot(price ~ basement,data=train,main="Price vs Basement", xlab="basement",ylab="price",col="green",border="blue")
+boxplot(price~renovation,data=train,main="Price vs Renovation", xlab="renovation",ylab="price",col="green",border="blue")
+boxplot(price~city,data=train,main="Price vs City", xlab="city",ylab="price",col="green",border="blue")
+ggplot(data=train)+geom_boxplot(aes(x=bedrooms,y=price))
+```
+
+### Plotting data with and without outliers to understand the change in the slope.
+
+```{r}
+ol=boxplot(train$price,plot=FALSE)$out
+ol_data=train[which(train$price %in% ol),]
+train1= train[-which(train$price %in% ol),]
+par(mfrow=c(1, 2))
+plot(train$bedrooms, train$price, main="Outliers Included", xlab="bedrooms", ylab="price", pch="*", col="orange", cex=2)
+abline(lm(price ~ bedrooms, data=train), col="blue", lwd=3, lty=2)
+plot(train1$bedrooms, train1$price, main="Removed outliers", xlab="bedrooms", ylab="price", pch="*", col="orange", cex=2)
+abline(lm(price ~bedrooms, data=train1), col="brown", lwd=3, lty=2)
+```
+
+
+### Analaysis of variance (ANOVA)
+
+```{r}
+## Anova and Turkey test for price vs condition and plotting the distribution
+## Calculate frequency, mean and standard deviation
+final_merged_data %>% group_by(condition) %>% summarise(condition_freq = n(),price_mean = mean(price, na.rm = TRUE), price_sd = sd(price, na.rm = TRUE))
+anova_cond <- aov(price ~ condition, data = final_merged_data)
+summary(anova_cond)
+options(scipen=999)
+ggboxplot(final_merged_data, x = "condition", y = "price", ylim=c(78000,7700000))
+```
+
+
+```{r}
+## Anova and Turkey test for price vs renovation and plotting the distribution
+## Calculate frequency, mean and standard deviation
+final_merged_data %>% group_by(renovation) %>% summarise(renovation_freq = n(), price_mean = mean(price, na.rm = TRUE), price_sd = sd(price, na.rm = TRUE))
+anova_reno <- aov(price ~ renovation, data = final_merged_data)
+summary(anova_reno)
+options(scipen=999)
+ggboxplot(final_merged_data, x = "renovation", y = "price", ylim=c(78000,7700000))
+```
+
+
+```{r}
+## Anova and Turkey test for price vs city and plotting the distribution
+## Calculate frequency, mean and standard deviation
+options(dplyr.print_max = 1e9)
+final_merged_data %>% group_by(city) %>% summarise(city_freq = n(), price_mean = mean(price, na.rm = TRUE), price_sd = sd(price, na.rm = TRUE))
+anova_city <- aov(price ~ city, data = final_merged_data)
+summary(anova_city)
+options(scipen=999)
+ggboxplot(final_merged_data, x = "city", y = "price", ylim=c(78000,7700000)) + coord_flip()
+```
+
+
+### Data Modelling
+#### Loading the splitted data pre processed Data 
+
+#### Multiple Linear Regression
+
+```{r}
+model <- lm(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_living15+sqft_lot15+basement+renovation,data=train)
+summary(model)
+model_fit <- lm(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_living15+sqft_lot15+basement+renovation, data=train)
+s <- stepAIC(model_fit, direction="both")
+s$anova
+linear_model1 <- lm(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_living15+basement+renovation, data=train)
+summary(linear_model1)
+# train the model and store the bootstrap in a dataframe
+model_training <- train(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_living15+basement+renovation, data=train, method="lm")
+summary(model_training)
+model_training_r2 <- summary(model_training$finalModel)$r.squared
+model_training_results <- as.data.frame(model_training$results)
+```
+
+#### Influential point Detection using cook's distance
+
+```{r}
+cook_distance <- cooks.distance(linear_model1)
+sprintf("The mean of Cook's distance is : %f ", mean(cook_distance))
+par(mfrow=c(1, 1))
+plot(cook_distance, main="i points by Cooks distance")
+abline(h = 4*mean(cook_distance, na.rm=T), col="blue")  
+text(x=1:length(cook_distance)+1,y=cook_distance,labels=ifelse(cook_distance>4*mean(cook_distance,na.rm=T),names(cook_distance),""), col="blue")
+i <- as.numeric(names(cook_distance)[(cook_distance > 4*mean(cook_distance, na.rm=T))])  
+head(train[i, ])
+i_data <- train[i, ]
+i_ol <- inner_join(ol_data,i_data)
+t2 <- rbind(train,i_ol)
+row.names(t2) <- NULL
+linear_model2 <- lm(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_living15+basement+renovation, data=t2)
+summary(linear_model2)
+```
+
+
+### Model Evaluation
+
+```{r}
+## regression diagonstics
+par(mfrow = c(2, 2))
+plot(linear_model2)
+## multicollinearilty test
+## this shows there is no multicollinearilty in the model.
+vif(linear_model2)
+## accuracy
+prediction_test=predict(newdata=test, linear_model2)
+actual_model_fitted_test=data.frame(actual=test$price, predicted=prediction_test)
+abs_diff_test = mean(abs(actual_model_fitted_test$actual-actual_model_fitted_test$predicted)/actual_model_fitted_test$actual)
+accuracy=1-abs_diff_test
+sprintf(" The accuracy of the prediction on test data is : %f",accuracy*100)
+```
+
